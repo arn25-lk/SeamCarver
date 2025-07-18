@@ -11,33 +11,39 @@
 
 class Picture{
     private:
-        const int width_;
-        const int height_;
-        unsigned char* data_;
+        int prev_w;
+        int prev_h;
+        std::vector<unsigned char> prev_data_;
+        int width_;
+        int height_;
+        std::vector<unsigned char> data_;
         std::string path_; 
         
         
     public:
-        Picture(const char* path, const int width, const int height) : width_(width), height_(height){
+        Picture(const char* path, const int width, const int height) : width_(width), height_(height), prev_w(width), prev_h(height){
             int w(width), h(height), c(CHANNELS);
-            data_ = stbi_load(path, &w, &h, &c, 0);
+            unsigned char* data = stbi_load(path, &w, &h, &c, 0);
+            for(int i = 0; i < w*h*c; i++){
+                data_.push_back(data[i]);
+                prev_data_.push_back(data[i]); 
+            }
             std::string p(path);
             path_ = p; 
-         
         }
         int width() const{
-            return this->width_;
+            return width_;
         }
         int height() const{
-            return this->height_;
+            return height_;
         }
-        int r(int x, int y) const {
+        unsigned char r(int x, int y) const {
             return data_[(x*width_ + y) * CHANNELS];
         }
-        int g(int x, int y) const {
+        unsigned char g(int x, int y) const {
             return data_[(x*width_ + y) * CHANNELS + 1];
         }
-        int b(int x, int y) const {
+        unsigned char b(int x, int y) const {
             return data_[(x*width_ + y) * CHANNELS + 2];
         }
         int a(int x, int y ) const{
@@ -49,31 +55,84 @@ class Picture{
         }
         void set_wx(int x, int y){
             char c = static_cast<char>(255);
-            char z = static_cast<char>(0);
-            data_[(x*width_ + y) * CHANNELS] = c;
-            data_[(x*width_ + y) * CHANNELS + 1] = c;
-            data_[(x*width_ + y) * CHANNELS + 2] = c;
+            prev_data_[(x*prev_w + y) * CHANNELS] = c;
+            prev_data_[(x*prev_w + y) * CHANNELS + 1] = c;
+            prev_data_[(x*prev_w + y) * CHANNELS + 2] = c;
         } // Once we set this, this seam will no longer be considered.
-
-
+        int remove_vseam(int w, int h, std::vector< int > v_seam){
+            std::vector<unsigned char> new_data;
+            new_data.resize(w*h*CHANNELS);
+            for(int i = 0; i < height_; i++){ 
+                int x = 0; 
+                int seam_j = v_seam[i];
+                for(int j = 0; j < width_; j++){
+                    if(j != seam_j){
+                        new_data[(i*w + x) * CHANNELS] = r(i,j);
+                        new_data[(i*w + x) * CHANNELS + 1] = g(i,j);
+                        new_data[(i*w + x) * CHANNELS + 2] = b(i,j);
+                        x++;
+                    }
+                }
+            }
+            prev_data_ = data_;
+            prev_w = width_;
+            prev_h = height_;
+            data_ = new_data;
+            width_ = w;
+            height_ = h; 
+            return 0;
+        }
+        int remove_hseam(int w, int h, std::vector< int > h_seam){
+            std::vector<unsigned char> new_data;
+            new_data.resize(w*h*CHANNELS);
+            for(int j = 0; j < width_; j++){ 
+                int y = 0; 
+                int seam_j = h_seam[j];
+                for(int i = 0; i < height_; i++){
+                    if(i != seam_j){
+                        new_data[(y*w + j) * CHANNELS] = r(i,j);
+                        new_data[(y*w + j) * CHANNELS + 1] = g(i,j);
+                        new_data[(y*w + j) * CHANNELS + 2] = b(i,j);
+                        y++;
+                    }
+                }
+            }
+            prev_data_ = data_;
+            prev_w = width_;
+            prev_h = height_;
+            data_ = new_data;
+            width_ = w;
+            height_ = h; 
+            return 0;
+        }
         int highlight_vseam(std::vector< int> seam){
-            for(int i=0; i < height_; i++){
+            for(int i=0; i < prev_h; i++){
                 set_wx(i, seam[i]);
             }
             return 0;
         }
         int highlight_hseam(std::vector< int> seam){
-            for(int i=0; i < width_; i++){
+            for(int i=0; i < prev_w; i++){
                 set_wx(seam[i], i);
             }
             return 0;
         }
+        int write_img(){
+            std::string p = "e-" + path_;
+            unsigned char data [width_*height_*CHANNELS];
+            for(int i = 0; i < width_*height_*CHANNELS; i++){
+                data[i] = data_[i]; 
+            }
+            return stbi_write_png(p.c_str(), width_, height_, 3, data, width_ * 3);
+        }
         int write_himg(){
             std::string p = "h-" + path_;
-            return stbi_write_png(p.c_str(), width_, height_, 3, data_, width_ * 3);
+            unsigned char data [prev_w*prev_h*CHANNELS];
+            for(int i = 0; i < prev_w*prev_h*CHANNELS; i++){
+                data[i] = prev_data_[i]; 
+            }
+            return stbi_write_png(p.c_str(), prev_w, prev_h, 3, data, prev_w * 3);
         }
-        
-
 };
 
 class SeamCarver{
@@ -116,7 +175,7 @@ class SeamCarver{
                 back[i].resize(w);
             }
             for(int j = 0; j < w;j++){
-                all_seams[0][j] = this->energy(0,j);
+                all_seams[0][j] = energy(0,j);
                 back[0][j] = j;
             }
             for(int i = 1; i < h;i++){
@@ -128,7 +187,7 @@ class SeamCarver{
                     int index = j - 1;
                     if (p_x < min_val) { min_val = p_x; index = j; }
                     if (p_xr < min_val) { min_val = p_xr; index = j + 1; }
-                    all_seams[i][j] = this->energy(i,j) + min_val;
+                    all_seams[i][j] = energy(i,j) + min_val;
                     back[i][j] = index;
                 }
             }
@@ -167,7 +226,7 @@ class SeamCarver{
                 back[i].resize(w);
             }
             for(int i = 0; i < h;i++){
-                all_seams[i][0] = this->energy(i,0);
+                all_seams[i][0] = energy(i,0);
                 back[i][0] = i;
             }
             for(int j = 1; j < w; j++){
@@ -179,7 +238,7 @@ class SeamCarver{
                     int index = i + 1;
                     if (p_x < min_val) { min_val = p_x; index = i; }
                     if (p_xu < min_val) { min_val = p_xu; index = i - 1; }
-                    all_seams[i][j] = this->energy(i,j) + min_val;
+                    all_seams[i][j] = energy(i,j) + min_val;
                     back[i][j] = index;
                 }
             }
@@ -209,26 +268,37 @@ class SeamCarver{
         }
 };
 
+int main(int argc, char *argv[]){
+    if(argc < 4 || argc > 5){
+        return -1;
+    }
+    int w,h;
+    int to_width, to_height;
+    char path[1024]; 
+    bool hilight_first = false;
+    std::sscanf(argv[1], "%s", path);
+    std::sscanf(argv[2], "-s=%dx%d", &w, &h);
+    std::sscanf(argv[3], "-t=%dx%d", &to_width, &to_height);
+    if(argc == 5){
+        hilight_first = true;
+    }
 
-int main(){
-    int w{1024}, h{1024};
-    Picture p("arnav.png", w, h);
-    int to_width{996}, to_height{996}; 
+    Picture p(path, w, h);
     SeamCarver sc(p);
-    // for(int i = 0;  i < h; i++){
-    //     for(int j = 0; j < w; j++){
-    //         sc.energy(i,j, true);
-    //     }
-    //     std::cout << "\n"; 
-    // }
-    for(int i = to_width; i < w; i++){
-        auto x  = sc.findVerticalSeam();
-        p.highlight_vseam(x);
+    
+    for(int i = 0; i < w-to_width; i++){
+        SeamCarver sc(p);  
+        auto x = sc.findVerticalSeam();
+        if(hilight_first){ p.highlight_vseam(x); p.write_himg();}
+        p.remove_vseam(p.width()-1, h, x);
     }
-    for(int i = to_height; i < h; i++){
-        auto x  = sc.findHorizontalSeam();
-        p.highlight_hseam(x);
+    for(int i = 0; i < h-to_height; i++){
+        SeamCarver sc(p);  
+        auto x = sc.findHorizontalSeam();
+        if(hilight_first){ p.highlight_hseam(x); p.write_himg();}
+        p.remove_hseam(p.width(), p.height()-1, x);
     }
-    return p.write_himg();
 
+    p.write_img();
+    return 0;
 }
