@@ -4,136 +4,127 @@
 #include <array>
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
-#define CHANNELS 3
+
 #include "stb_image.h"
 #include "stb_image_write.h"
+#include "picture.hpp"
+
+using namespace util;
 
 
-class Picture{
-    private:
-        int prev_w;
-        int prev_h;
-        std::vector<unsigned char> prev_data_;
-        int width_;
-        int height_;
-        std::vector<unsigned char> data_;
-        std::string path_; 
-        
-        
-    public:
-        Picture(const char* path, const int width, const int height) : width_(width), height_(height), prev_w(width), prev_h(height){
-            int w(width), h(height), c(CHANNELS);
-            unsigned char* data = stbi_load(path, &w, &h, &c, 0);
-            for(int i = 0; i < w*h*c; i++){
-                data_.push_back(data[i]);
-                prev_data_.push_back(data[i]); 
+Picture::Picture(const char* path, const int width, const int height) : width_(width), height_(height), prev_w(width), prev_h(height){
+    int w(width), h(height), c(CHANNELS);
+    unsigned char* data = stbi_load(path, &w, &h, &c, 0);
+    for(int i = 0; i < w*h*c; i++){
+        data_.push_back(data[i]);
+        prev_data_.push_back(data[i]); 
+    }
+    std::string p(path);
+    path_ = p; 
+}
+int Picture::width() const{
+    return width_;
+}
+int Picture::height() const{
+    return height_;
+}
+unsigned char Picture::r(int x, int y) const {
+    return data_[(x*width_ + y) * CHANNELS];
+}
+unsigned char Picture::g(int x, int y) const {
+    return data_[(x*width_ + y) * CHANNELS + 1];
+}
+unsigned char Picture::b(int x, int y) const {
+    return data_[(x*width_ + y) * CHANNELS + 2];
+}
+int Picture::a(int x, int y ) const{
+    if(CHANNELS == 4){
+        return data_[(x*width_ + y) * CHANNELS + 3];
+    }else{
+        return -1;
+    }
+}
+void Picture::set_wx(int x, int y){
+    char c = static_cast<char>(255);
+    prev_data_[(x*prev_w + y) * CHANNELS] = c;
+    prev_data_[(x*prev_w + y) * CHANNELS + 1] = c;
+    prev_data_[(x*prev_w + y) * CHANNELS + 2] = c;
+} // Once we set this, this seam will no longer be considered.
+int Picture::remove_vseam(int w, int h, std::vector< int > v_seam){
+    std::vector<unsigned char> new_data;
+    new_data.resize(w*h*CHANNELS);
+    for(int i = 0; i < height_; i++){ 
+        int x = 0; 
+        int seam_j = v_seam[i];
+        for(int j = 0; j < width_; j++){
+            if(j != seam_j){
+                new_data[(i*w + x) * CHANNELS] = r(i,j);
+                new_data[(i*w + x) * CHANNELS + 1] = g(i,j);
+                new_data[(i*w + x) * CHANNELS + 2] = b(i,j);
+                x++;
             }
-            std::string p(path);
-            path_ = p; 
         }
-        int width() const{
-            return width_;
-        }
-        int height() const{
-            return height_;
-        }
-        unsigned char r(int x, int y) const {
-            return data_[(x*width_ + y) * CHANNELS];
-        }
-        unsigned char g(int x, int y) const {
-            return data_[(x*width_ + y) * CHANNELS + 1];
-        }
-        unsigned char b(int x, int y) const {
-            return data_[(x*width_ + y) * CHANNELS + 2];
-        }
-        int a(int x, int y ) const{
-            if(CHANNELS == 4){
-                return data_[(x*width_ + y) * CHANNELS + 3];
-            }else{
-                return -1;
+    }
+    prev_data_ = data_;
+    prev_w = width_;
+    prev_h = height_;
+    data_ = new_data;
+    width_ = w;
+    height_ = h; 
+    return 0;
+}
+int Picture::remove_hseam(int w, int h, std::vector< int > h_seam){
+    std::vector<unsigned char> new_data;
+    new_data.resize(w*h*CHANNELS);
+    for(int j = 0; j < width_; j++){ 
+        int y = 0; 
+        int seam_j = h_seam[j];
+        for(int i = 0; i < height_; i++){
+            if(i != seam_j){
+                new_data[(y*w + j) * CHANNELS] = r(i,j);
+                new_data[(y*w + j) * CHANNELS + 1] = g(i,j);
+                new_data[(y*w + j) * CHANNELS + 2] = b(i,j);
+                y++;
             }
         }
-        void set_wx(int x, int y){
-            char c = static_cast<char>(255);
-            prev_data_[(x*prev_w + y) * CHANNELS] = c;
-            prev_data_[(x*prev_w + y) * CHANNELS + 1] = c;
-            prev_data_[(x*prev_w + y) * CHANNELS + 2] = c;
-        } // Once we set this, this seam will no longer be considered.
-        int remove_vseam(int w, int h, std::vector< int > v_seam){
-            std::vector<unsigned char> new_data;
-            new_data.resize(w*h*CHANNELS);
-            for(int i = 0; i < height_; i++){ 
-                int x = 0; 
-                int seam_j = v_seam[i];
-                for(int j = 0; j < width_; j++){
-                    if(j != seam_j){
-                        new_data[(i*w + x) * CHANNELS] = r(i,j);
-                        new_data[(i*w + x) * CHANNELS + 1] = g(i,j);
-                        new_data[(i*w + x) * CHANNELS + 2] = b(i,j);
-                        x++;
-                    }
-                }
-            }
-            prev_data_ = data_;
-            prev_w = width_;
-            prev_h = height_;
-            data_ = new_data;
-            width_ = w;
-            height_ = h; 
-            return 0;
-        }
-        int remove_hseam(int w, int h, std::vector< int > h_seam){
-            std::vector<unsigned char> new_data;
-            new_data.resize(w*h*CHANNELS);
-            for(int j = 0; j < width_; j++){ 
-                int y = 0; 
-                int seam_j = h_seam[j];
-                for(int i = 0; i < height_; i++){
-                    if(i != seam_j){
-                        new_data[(y*w + j) * CHANNELS] = r(i,j);
-                        new_data[(y*w + j) * CHANNELS + 1] = g(i,j);
-                        new_data[(y*w + j) * CHANNELS + 2] = b(i,j);
-                        y++;
-                    }
-                }
-            }
-            prev_data_ = data_;
-            prev_w = width_;
-            prev_h = height_;
-            data_ = new_data;
-            width_ = w;
-            height_ = h; 
-            return 0;
-        }
-        int highlight_vseam(std::vector< int> seam){
-            for(int i=0; i < prev_h; i++){
-                set_wx(i, seam[i]);
-            }
-            return 0;
-        }
-        int highlight_hseam(std::vector< int> seam){
-            for(int i=0; i < prev_w; i++){
-                set_wx(seam[i], i);
-            }
-            return 0;
-        }
-        int write_img(){
-            std::string p = "e-" + path_;
-            unsigned char data [width_*height_*CHANNELS];
-            for(int i = 0; i < width_*height_*CHANNELS; i++){
-                data[i] = data_[i]; 
-            }
-            return stbi_write_png(p.c_str(), width_, height_, 3, data, width_ * 3);
-        }
-        int write_himg(){
-            std::string p = "h-" + path_;
-            unsigned char data [prev_w*prev_h*CHANNELS];
-            for(int i = 0; i < prev_w*prev_h*CHANNELS; i++){
-                data[i] = prev_data_[i]; 
-            }
-            return stbi_write_png(p.c_str(), prev_w, prev_h, 3, data, prev_w * 3);
-        }
-};
+    }
+    prev_data_ = data_;
+    prev_w = width_;
+    prev_h = height_;
+    data_ = new_data;
+    width_ = w;
+    height_ = h; 
+    return 0;
+}
+int Picture::highlight_vseam(std::vector< int> seam){
+    for(int i=0; i < prev_h; i++){
+        set_wx(i, seam[i]);
+    }
+    return 0;
+}
+int Picture::highlight_hseam(std::vector< int> seam){
+    for(int i=0; i < prev_w; i++){
+        set_wx(seam[i], i);
+    }
+    return 0;
+}
+int Picture::write_img(){
+    std::string p = "e-" + path_;
+    unsigned char data [width_*height_*CHANNELS];
+    for(int i = 0; i < width_*height_*CHANNELS; i++){
+        data[i] = data_[i]; 
+    }
+    return stbi_write_png(p.c_str(), width_, height_, 3, data, width_ * 3);
+}
+int Picture::write_himg(){
+    std::string p = "h-" + path_;
+    unsigned char data [prev_w*prev_h*CHANNELS];
+    for(int i = 0; i < prev_w*prev_h*CHANNELS; i++){
+        data[i] = prev_data_[i]; 
+    }
+    return stbi_write_png(p.c_str(), prev_w, prev_h, 3, data, prev_w * 3);
+}
+
 
 class SeamCarver{
     public:
@@ -298,7 +289,6 @@ int main(int argc, char *argv[]){
         if(hilight_first){ p.highlight_hseam(x); p.write_himg();}
         p.remove_hseam(p.width(), p.height()-1, x);
     }
-
     p.write_img();
     return 0;
 }
