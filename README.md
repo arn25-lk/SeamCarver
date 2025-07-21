@@ -1,9 +1,7 @@
 # Seam Carving Image Resizer
 
-<video width="320" height="240" controls>
-  <source src="seam-carving-demo.mov" type="video/mp4">
-</video>
 
+![Demo](demo.gif)
 This project implements **content-aware image resizing** using the **seam carving algorithm** in C++. Seam carving reduces image dimensions by removing vertical or horizontal seams (paths of least visual importance), preserving important visual features better than standard resizing methods.
 
 The energy of each pixel is calculated using the **dual-gradient energy function**, and seams are computed via dynamic programming. You can also highlight seams for visualization before removing them.
